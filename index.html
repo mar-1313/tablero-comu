@@ -1,0 +1,1119 @@
+<!doctype html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "OSRJA Panel de Canales",
+  "schemaVersion": 1,
+  "description": "Dashboard consolidado de OSRJA con secciones por canal (Instagram, Facebook, Email/Brevo, Google Business Profile, WhatsApp, LinkedIn), indicadores clave, gráficos de tendencia, historial semanal acumulado (para comparar mes a mes) y una pestaña de Mejoras con recomendaciones basadas en los datos reales. Instagram y Email en vivo vía Windsor.ai y Brevo; Facebook, Google Business, WhatsApp y LinkedIn se refrescan solos cada semana (sin API pública gratuita) y acumulan historial en archivos .jsonl.",
+  "mcpTools": [
+    "mcp__c652fe63-a8a0-4083-bfc6-7fd51d17b945__get_data",
+    "mcp__a89a6365-5ce6-4634-a8be-6d5d387762dc__email_campaign_management_get_email_campaigns",
+    "mcp__a89a6365-5ce6-4634-a8be-6d5d387762dc__lists_get_lists"
+  ],
+  "mcpServerNames": [
+    "Windsor.ai",
+    "Brevo",
+    "Brevo"
+  ]
+}
+</script>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSRJA · Panel de Canales</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<style>
+  :root{
+    color-scheme: light;
+    --blue:#1d4ed8; --blue-2:#2563eb; --green:#0f9d6b; --green-2:#10b981;
+    --ink:#0f172a; --muted:#64748b; --line:#e7ebf0; --bg:#f6f8fb; --card:#ffffff;
+    --up:#0f9d6b; --down:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 20px 56px;}
+  header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .logo{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:800;
+    background:linear-gradient(135deg,var(--blue),var(--green));font-size:15px;letter-spacing:.5px;flex:none;}
+  h1{font-size:19px;margin:0;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px;}
+  .updated{text-align:right;font-size:11.5px;color:var(--muted);}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:18px;}
+  .tab{appearance:none;border:none;background:none;padding:10px 14px;font-size:13.5px;font-weight:600;
+    color:var(--muted);cursor:pointer;border-radius:10px 10px 0 0;display:flex;align-items:center;gap:7px;
+    border-bottom:2.5px solid transparent;transition:color .15s;}
+  .tab:hover{color:var(--ink);}
+  .tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+  .tab .dot{width:7px;height:7px;border-radius:50%;background:#cbd5e1;flex:none;}
+  .tab.active .dot{background:linear-gradient(135deg,var(--blue),var(--green));}
+
+  /* filter bar */
+  .filterbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .filterbar label{font-size:12px;color:var(--muted);font-weight:600;}
+  select, .btn{font:inherit;font-size:12.5px;border:1px solid var(--line);background:#fff;color:var(--ink);
+    border-radius:9px;padding:7px 10px;cursor:pointer;}
+  .btn{font-weight:700;color:var(--blue);}
+  .btn:hover{background:#f3f7ff;}
+
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  .grid{display:grid;gap:14px;}
+  .kpis{grid-template-columns:repeat(5,1fr);margin:4px 0 18px;}
+  .kpis.k3{grid-template-columns:repeat(3,1fr);}
+  .kpis.k4{grid-template-columns:repeat(4,1fr);}
+  @media(max-width:880px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;}
+  .kpi .label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+  .kpi .val{font-size:25px;font-weight:750;margin-top:6px;letter-spacing:-.5px;}
+  .kpi .delta{font-size:12px;margin-top:6px;font-weight:600;display:inline-flex;gap:4px;align-items:center;}
+  .delta.up{color:var(--up)} .delta.down{color:var(--down)} .delta.flat{color:var(--muted)}
+  .two{grid-template-columns:1.6fr 1fr;}
+  @media(max-width:880px){.two{grid-template-columns:1fr}}
+  .card h2{font-size:14px;margin:0 0 14px;font-weight:700;}
+  .chart-box{position:relative;height:260px;}
+  .mix{display:flex;flex-direction:column;gap:12px;}
+  .mixrow{display:flex;align-items:center;gap:10px;font-size:13px;}
+  .mixrow .nm{width:96px;color:var(--muted);font-weight:600;}
+  .bar{flex:1;height:9px;border-radius:6px;background:#eef1f6;overflow:hidden;}
+  .bar > i{display:block;height:100%;border-radius:6px;}
+  .mixrow .nv{width:44px;text-align:right;font-weight:700;}
+  .posts{grid-template-columns:1fr;margin-top:14px;}
+  .post{display:flex;gap:14px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--card);}
+  .rank{width:26px;height:26px;border-radius:8px;background:#eef2ff;color:var(--blue);font-weight:800;display:grid;place-items:center;font-size:13px;flex:none;}
+  .ptype{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#fff;border-radius:5px;padding:2px 7px;display:inline-block;}
+  .t-CAROUSEL_ALBUM{background:#7c3aed}.t-IMAGE{background:#2563eb}.t-VIDEO{background:#0f9d6b}.t-REEL{background:#db2777}
+  .pcap{font-size:13.5px;line-height:1.45;margin:6px 0 9px;color:#1f2937;}
+  .pcap a{color:var(--blue);text-decoration:none;}
+  .pstats{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);}
+  .pstats b{color:var(--ink);font-weight:700;}
+  .section-title{font-size:14px;font-weight:700;margin:26px 2px 4px;}
+  .note{font-size:12px;color:var(--muted);margin:4px 2px 0;}
+  .loading,.error{padding:40px;text-align:center;color:var(--muted);font-size:14px;}
+  .error{color:#b91c1c;}
+  .foot{margin-top:24px;font-size:11.5px;color:var(--muted);text-align:center;}
+  .skel{color:var(--muted);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
+  th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;}
+  td.num,th.num{text-align:right;}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;background:#eef2ff;color:#4338ca;}
+  .callout{margin-top:14px;border-left:4px solid var(--blue);background:#f3f7ff;}
+  .callout .body{font-size:13.5px;line-height:1.5;}
+  .gbp-cards{grid-template-columns:1fr 1fr;}
+  @media(max-width:780px){.gbp-cards{grid-template-columns:1fr}}
+  .gbp-stat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;}
+  .gbp-stat .item{background:#f8fafc;border-radius:10px;padding:10px 12px;}
+  .gbp-stat .item .l{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;}
+  .gbp-stat .item .v{font-size:19px;font-weight:750;margin-top:3px;color:#cbd5e1;}
+  .badge-manual{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:3px 9px;}
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex:none;}
+  .segbtn{appearance:none;border:none;background:#fff;color:var(--muted);font:inherit;font-size:11.5px;font-weight:700;
+    padding:5px 11px;cursor:pointer;}
+  .segbtn.active{background:var(--blue);color:#fff;}
+  .segbtn:disabled{opacity:.4;cursor:not-allowed;}
+  .print-title{display:none;}
+  #print-btn{flex:none;}
+  @media print{
+    body{background:#fff;}
+    .tabs, #print-btn, #ig-reload, #em-reload, #ig-range, #em-limit, .filterbar label, .seg{display:none !important;}
+    .wrap{max-width:100%;padding:0 4px;}
+    .panel{display:block !important;page-break-before:always;}
+    .panel:first-of-type{page-break-before:auto;}
+    .print-title{display:block !important;font-size:17px;font-weight:800;margin:0 0 12px;padding-top:10px;border-top:2px solid var(--line);}
+    .card, .post{break-inside:avoid;}
+    .chart-box{height:220px;}
+  }
+</style>
+</head>
+<body>
+<script type="application/json" id="gbp-inline-data">
+{
+  "updated": "2026-07-20",
+  "source": "business.google.com/locations (cuenta de la obra social)",
+  "locations": [
+    {"name": "OSRJA Sede Moreno", "address": "Independencia 2737, Moreno", "interactions": 1717, "views_month": 3183, "rating": 3.7, "reviews_total": 550, "new_reviews": 29},
+    {"name": "OSRJA Sede CABA (Sindicato / SURJA)", "address": "Valentín Gómez 3828, CABA", "interactions": 688, "views_month": 1327, "rating": 3.9, "reviews_total": 71, "new_reviews": 17}
+  ]
+}
+</script>
+<script type="application/json" id="whatsapp-inline-data">
+{
+  "updated": "2026-08-01",
+  "source": "página pública del canal (sin login)",
+  "name": "Novedades Osrja",
+  "followers_label": "1 mil",
+  "followers_approx": 1000,
+  "note": "Meta no expone vistas/reacciones por difusión en la página pública del canal — solo el conteo de seguidores (redondeado por WhatsApp)."
+}
+</script>
+<script type="application/json" id="facebook-inline-data">
+{
+  "updated": "2026-08-31",
+  "source": "Meta Business Suite · Estadísticas (business.facebook.com, sesión de la obra social) — sin API paga",
+  "period": "22 jun 2026 – 19 jul 2026 (últimos 28 días)",
+  "views": 1500,
+  "views_delta_pct": 31.6,
+  "followers_gained": 11,
+  "followers_gained_delta_pct": 8.3,
+  "unfollows": 1,
+  "net_follows": 10,
+  "net_follows_delta_pct": 9.1,
+  "page_visits": 291,
+  "page_visits_delta_pct": 5.5,
+  "interactions": 8,
+  "interactions_delta_pct": 300,
+  "video_3s_views": 56,
+  "video_3s_views_delta_pct": 52.1,
+  "watch_time": "14 min 25 s",
+  "conversations_started": 3,
+  "conversations_delta_pct": 40,
+  "new_contacts": 2,
+  "ads_status": "Sin campañas de Meta Ads creadas en esta cuenta publicitaria (cuenta publicitaria) al momento de este chequeo.",
+  "stale": true,
+  "stale_note": "No había navegador Chrome conectado (Claude in Chrome) en el momento de este chequeo automático, así que se reutilizan los últimos datos leídos de Meta Business Suite (correspondientes al período mostrado)."
+}
+</script>
+<script type="application/json" id="linkedin-inline-data">
+{
+  "updated": "2026-09-04",
+  "source_followers": "linkedin.com/company/obra-social-relojeros-joyeros-y-afines (página pública, sin login)",
+  "source_analytics": "LinkedIn Analytics admin (sesión de administradora)",
+  "followers_total": 2640,
+  "stale_followers": false,
+  "analytics_available": false,
+  "period": null,
+  "followers_gained_week": null,
+  "page_views": null,
+  "unique_visitors": null,
+  "impressions": null,
+  "engagements": null,
+  "engagement_rate_pct": null,
+  "reactions": null,
+  "comments": null,
+  "reposts": null,
+  "top_post": null,
+  "note": "No había ningún navegador de Claude in Chrome conectado en el momento de esta actualización manual, así que no se pudieron leer las analíticas de administradora — solo el conteo público de seguidores. La corrida automática semanal del lunes parece estar fallando desde el 10 de agosto; revisar que el Chrome conectado esté logueado y disponible los lunes ~09:50."
+}
+</script>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">OS</div>
+      <div>
+        <h1>OSRJA · Panel de Canales</h1>
+        <div class="sub">Instagram · Facebook · Email · Google Business · WhatsApp · LinkedIn</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:12px;">
+      <div class="updated" id="updated">Cargando…</div>
+      <button class="btn" id="print-btn" onclick="window.print()">Imprimir informe (PDF)</button>
+    </div>
+  </header>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="resumen"><span class="dot"></span>Resumen</button>
+    <button class="tab" data-tab="instagram"><span class="dot"></span>Instagram</button>
+    <button class="tab" data-tab="facebook"><span class="dot"></span>Facebook</button>
+    <button class="tab" data-tab="email"><span class="dot"></span>Email (Brevo)</button>
+    <button class="tab" data-tab="gbp"><span class="dot"></span>Google Business</button>
+    <button class="tab" data-tab="whatsapp"><span class="dot"></span>WhatsApp</button>
+    <button class="tab" data-tab="linkedin"><span class="dot"></span>LinkedIn</button>
+    <button class="tab" data-tab="mejoras"><span class="dot"></span>Mejoras</button>
+  </div>
+
+  <!-- RESUMEN -->
+  <section class="panel active" id="panel-resumen">
+    <div class="print-title">Resumen</div>
+    <div class="note" style="margin-bottom:12px">Vista rápida de los tres canales. Para el detalle completo, gráficos y filtros de cada uno, usá las pestañas de arriba.</div>
+    <div id="resumen-content"><div class="loading">Cargando resumen…</div></div>
+  </section>
+
+  <!-- INSTAGRAM -->
+  <section class="panel" id="panel-instagram">
+    <div class="print-title">Instagram · @osrjaoficial</div>
+    <div class="filterbar">
+      <label for="ig-range">Rango</label>
+      <select id="ig-range">
+        <option value="last_7d">Últimos 7 días</option>
+        <option value="last_14d" selected>Últimos 14 días</option>
+        <option value="last_30d">Últimos 30 días</option>
+        <option value="last_90d">Últimos 90 días</option>
+      </select>
+      <button class="btn" id="ig-reload">↻ Recargar</button>
+      <span class="sub" id="ig-handle" style="margin-left:auto"></span>
+    </div>
+    <div id="ig-content"><div class="loading">Cargando datos de Instagram…</div></div>
+  </section>
+
+  <!-- FACEBOOK -->
+  <section class="panel" id="panel-facebook">
+    <div class="print-title">Facebook</div>
+    <div class="filterbar">
+      <span class="badge-manual">● Automático · semanal (lunes)</span>
+    </div>
+    <div id="facebook-content"></div>
+  </section>
+
+  <!-- EMAIL -->
+  <section class="panel" id="panel-email">
+    <div class="print-title">Email (Brevo)</div>
+    <div class="filterbar">
+      <label for="em-limit">Mostrar últimas</label>
+      <select id="em-limit">
+        <option value="10">10 campañas</option>
+        <option value="15" selected>15 campañas</option>
+        <option value="30">30 campañas</option>
+      </select>
+      <button class="btn" id="em-reload">↻ Recargar</button>
+    </div>
+    <div id="email-content"><div class="loading">Cargando campañas de Brevo…</div></div>
+  </section>
+
+  <!-- GBP -->
+  <section class="panel" id="panel-gbp">
+    <div class="print-title">Google Business Profile</div>
+    <div class="filterbar">
+      <span class="badge-manual">● Automático · semanal (lunes)</span>
+    </div>
+    <div id="gbp-content"></div>
+  </section>
+
+  <!-- WHATSAPP -->
+  <section class="panel" id="panel-whatsapp">
+    <div class="print-title">WhatsApp</div>
+    <div class="filterbar">
+      <span class="badge-manual">● Automático · semanal (lunes)</span>
+    </div>
+    <div id="whatsapp-content"></div>
+  </section>
+
+  <!-- LINKEDIN -->
+  <section class="panel" id="panel-linkedin">
+    <div class="print-title">LinkedIn</div>
+    <div class="filterbar">
+      <span class="badge-manual">● Automático · semanal (lunes)</span>
+    </div>
+    <div id="linkedin-content"></div>
+  </section>
+
+  <!-- MEJORAS -->
+  <section class="panel" id="panel-mejoras">
+    <div class="print-title">Mejoras / Recomendaciones</div>
+    <div id="mejoras-content"></div>
+  </section>
+
+  <div class="foot">Instagram y Email se actualizan en vivo vía Windsor.ai y Brevo cada vez que abrís el panel · Facebook, Google Business Profile, el canal de WhatsApp y LinkedIn no tienen API pública gratuita, así que una tarea programada los revisa todos los lunes y guarda los números acá. Pulsá <b>Recargar</b> en cada pestaña para traer datos nuevos.</div>
+</div>
+
+<script>
+/* ---------- helpers ---------- */
+const IG_TOOL = 'mcp__c652fe63-a8a0-4083-bfc6-7fd51d17b945__get_data';
+const EM_CAMP_TOOL = 'mcp__a89a6365-5ce6-4634-a8be-6d5d387762dc__email_campaign_management_get_email_campaigns';
+const EM_LISTS_TOOL = 'mcp__a89a6365-5ce6-4634-a8be-6d5d387762dc__lists_get_lists';
+
+const fmt = n => (n==null||isNaN(n)) ? '–' : Math.round(n).toLocaleString('es-AR');
+const pf = n => (n==null||isNaN(n)) ? '–%' : (Math.round(n*10)/10).toFixed(1) + '%';
+const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sum = (arr,k) => arr.reduce((a,b)=>a+(Number(b[k])||0),0);
+
+async function callMcp(tool, args){
+  if(!window.cowork || !window.cowork.callMcpTool){
+    throw new Error('Este dato en vivo solo carga adentro de la app de Claude — abrí el panel ahí para verlo (este acceso directo no tiene esa conexión).');
+  }
+  const r = await window.cowork.callMcpTool(tool, args);
+  if(r && r.isError) throw new Error('Error del conector');
+  let p = r.structuredContent;
+  if(p==null && r.content && r.content[0] && r.content[0].text) p = JSON.parse(r.content[0].text);
+  if(p==null) p = r;
+  return p;
+}
+async function fetchIg(args){
+  const p = await callMcp(IG_TOOL, args);
+  return Array.isArray(p) ? p : (p.result ?? []);
+}
+function deltaHTML(cur, prev, label){
+  if(prev===0 || prev==null){ return `<span class="delta flat">— s/comparación</span>`; }
+  const pct = ((cur-prev)/Math.abs(prev))*100;
+  const cls = pct>0.5?'up':(pct<-0.5?'down':'flat');
+  const arr = pct>0.5?'▲':(pct<-0.5?'▼':'■');
+  return `<span class="delta ${cls}">${arr} ${Math.abs(pct).toFixed(0)}% ${label||'vs. período previo'}</span>`;
+}
+async function loadJsonWithFallback(fetchPath, inlineId){
+  try{
+    const r = await fetch(fetchPath, {cache:'no-store'});
+    if(!r.ok) throw new Error('sin datos guardados todavía');
+    return await r.json();
+  }catch(e){
+    const el = document.getElementById(inlineId);
+    if(el && el.textContent.trim()) return JSON.parse(el.textContent);
+    throw e;
+  }
+}
+async function loadHistory(path){
+  try{
+    const r = await fetch(path, {cache:'no-store'});
+    if(!r.ok) return [];
+    const txt = await r.text();
+    return txt.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+      try{ return JSON.parse(l); }catch(e){ return null; }
+    }).filter(Boolean);
+  }catch(e){ return []; }
+}
+function monthlyAgg(history){
+  // Un punto por mes calendario: se queda con el último snapshot registrado de ese mes
+  // (no suma valores — para métricas de período tipo "interacciones" es la foto de fin de mes, no un acumulado).
+  const byMonth = new Map();
+  history.forEach(p=>{ const ym = (p.updated||'').slice(0,7); if(ym) byMonth.set(ym, p); });
+  return Array.from(byMonth.values());
+}
+const trendCharts = {}; // canvasId -> Chart instance, para poder redibujar al togglear semanal/mensual
+function trendCardHTML(canvasId, note, monthlyPoints){
+  const hasMonthly = monthlyPoints && monthlyPoints.length >= 2;
+  return `<div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <h2 style="margin:0">Tendencia</h2>
+      <div class="seg" id="${canvasId}-seg">
+        <button class="segbtn active" type="button" data-mode="weekly">Semanal</button>
+        <button class="segbtn" type="button" data-mode="monthly" ${hasMonthly?'':'disabled title="Todavía no hay 2 meses distintos registrados"'}>Mensual</button>
+      </div>
+    </div>
+    <div class="note" style="margin:8px 0 10px">${note}</div>
+    <div class="chart-box" style="height:200px"><canvas id="${canvasId}"></canvas></div>
+  </div>`;
+}
+function drawTrendChart(canvasId, points, series){
+  const labels = points.map(p=>{ const d=p.updated||''; const [y,m,dd]=d.split('-'); return dd&&m ? `${dd}/${m}` : d; });
+  if(trendCharts[canvasId]) trendCharts[canvasId].destroy();
+  trendCharts[canvasId] = new Chart(document.getElementById(canvasId), {
+    type:'line',
+    data:{ labels, datasets: series.map(s=>({
+      label:s.label, data: points.map(p=>{ const v=s.get(p); return v==null ? null : Number(v)||0; }),
+      borderColor:s.color, backgroundColor:s.color+'22', borderWidth:2.5, tension:.3, fill:false, pointRadius:3, spanGaps:true
+    })) },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}},
+      scales:{y:{beginAtZero:true,grid:{color:'#eef1f6'},ticks:{font:{size:11},color:'#64748b'}},
+        x:{grid:{display:false},ticks:{font:{size:10.5},color:'#94a3b8'}}}
+    }
+  });
+}
+function renderTrendChart(canvasId, points, series){
+  if(points.length < 2) return; // needs at least 2 weekly snapshots to draw a line
+  const monthlyPoints = monthlyAgg(points);
+  drawTrendChart(canvasId, points, series);
+  const segEl = document.getElementById(canvasId+'-seg');
+  if(segEl){
+    segEl.addEventListener('click', e=>{
+      const btn = e.target.closest('.segbtn');
+      if(!btn || btn.disabled) return;
+      segEl.querySelectorAll('.segbtn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      drawTrendChart(canvasId, btn.dataset.mode==='monthly' ? monthlyPoints : points, series);
+    });
+  }
+}
+function stamp(){
+  const d = new Date();
+  document.getElementById('updated').innerHTML = `<b style="display:block;color:var(--ink);font-size:12.5px;font-weight:600">Actualizado</b>${d.toLocaleDateString('es-AR')} ${d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}`;
+}
+
+/* ---------- tabs ---------- */
+document.getElementById('tabs').addEventListener('click', e=>{
+  const btn = e.target.closest('.tab');
+  if(!btn) return;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+});
+
+/* ---------- state shared with Resumen tab ---------- */
+let igSummary = null, emailSummary = null, channelsSummary = null;
+let resumenFollowersChart = null;
+async function loadChannelsSummary(){
+  const [fb, gbp, wa, li] = await Promise.all([
+    loadJsonWithFallback('./facebook-data.json','facebook-inline-data').catch(()=>null),
+    loadJsonWithFallback('./gbp-data.json','gbp-inline-data').catch(()=>null),
+    loadJsonWithFallback('./whatsapp-data.json','whatsapp-inline-data').catch(()=>null),
+    loadJsonWithFallback('./linkedin-data.json','linkedin-inline-data').catch(()=>null),
+  ]);
+  channelsSummary = {fb, gbp, wa, li};
+  renderResumen();
+}
+
+/* ================= INSTAGRAM ================= */
+async function loadInstagram(range){
+  const content = document.getElementById('ig-content');
+  content.innerHTML = '<div class="loading">Cargando datos de Instagram…</div>';
+  try{
+    const days = {last_7d:7, last_14d:14, last_30d:30, last_90d:90}[range] || 14;
+    const [daily, profile, media, genAge, cities] = await Promise.all([
+      fetchIg({connector:'instagram', fields:['date','reach','views','accounts_engaged','total_interactions','likes','comments','saves','shares','follower_count'], date_preset:range}),
+      fetchIg({connector:'instagram', fields:['username','followers_count','media_count']}),
+      fetchIg({connector:'instagram', fields:['timestamp','media_caption','media_type','media_permalink','media_reach','media_engagement','media_like_count','media_comments_count','media_saved','media_shares','media_views'], date_preset:(days<=30?'last_30d':range)}),
+      fetchIg({connector:'instagram', fields:['audience_gender_age_name','audience_gender_age_size']}),
+      fetchIg({connector:'instagram', fields:['city','audience_city_size']})
+    ]);
+
+    const all = daily.slice().filter(d=>d.date).sort((a,b)=>a.date<b.date?-1:1);
+    const half = Math.ceil(all.length/2);
+    const cur = all.slice(half);
+    const prev = all.slice(0, half);
+
+    const prof = profile[0] || {};
+    document.getElementById('ig-handle').textContent = '@'+(prof.username||'osrjaoficial')+' · '+fmt(prof.media_count)+' publicaciones';
+
+    const first = cur[0]?.date, lastd = cur[cur.length-1]?.date;
+    const dr = s => { if(!s) return ''; const [y,m,d]=s.split('-'); return `${d}/${m}`; };
+
+    const reachC=sum(cur,'reach'), reachP=sum(prev,'reach');
+    const viewsC=sum(cur,'views'), viewsP=sum(prev,'views');
+    const engC=sum(cur,'total_interactions'), engP=sum(prev,'total_interactions');
+    const newC=sum(cur,'follower_count'), newP=sum(prev,'follower_count');
+    const erC = reachC>0 ? (engC/reachC*100) : 0;
+    const erP = reachP>0 ? (engP/reachP*100) : 0;
+
+    const kpis = [
+      {label:'Seguidores', val:fmt(prof.followers_count), delta:`<span class="delta flat">total actual</span>`},
+      {label:'Nuevos seguidores', val:(newC>=0?'+':'')+fmt(newC), delta:deltaHTML(newC,newP)},
+      {label:'Alcance', val:fmt(reachC), delta:deltaHTML(reachC,reachP)},
+      {label:'Reproducciones', val:fmt(viewsC), delta:deltaHTML(viewsC,viewsP)},
+      {label:'Interacciones', val:fmt(engC), delta:deltaHTML(engC,engP)},
+    ];
+
+    const mix = [
+      {nm:'Me gusta', v:sum(cur,'likes'), c:'#2563eb'},
+      {nm:'Comentarios', v:sum(cur,'comments'), c:'#0f9d6b'},
+      {nm:'Guardados', v:Math.max(0,sum(cur,'saves')), c:'#7c3aed'},
+      {nm:'Compartidos', v:sum(cur,'shares'), c:'#db2777'},
+    ];
+    const mixMax = Math.max(1, ...mix.map(m=>m.v));
+
+    const wk = (ts)=> ts && (ts.slice(0,10) >= (first||'0000'));
+    let top = media.filter(m=>wk(m.timestamp));
+    let topNote = 'Publicaciones del período seleccionado, ordenadas por interacciones.';
+    if(top.length < 3){ top = media.slice(); topNote = 'Pocas publicaciones en el período — mostrando las mejores disponibles.'; }
+    top = top.sort((a,b)=>(Number(b.media_engagement)||0)-(Number(a.media_engagement)||0)).slice(0,5);
+
+    const postCard = (m,i)=>{
+      const cap = (m.media_caption||'(sin descripción)').replace(/\s+/g,' ').trim();
+      const shortCap = cap.length>140 ? cap.slice(0,140)+'…' : cap;
+      const t = (m.media_type||'IMAGE').toUpperCase();
+      const tl = {CAROUSEL_ALBUM:'Carrusel',IMAGE:'Imagen',VIDEO:'Video',REEL:'Reel'}[t]||t;
+      const d = m.timestamp ? m.timestamp.slice(8,10)+'/'+m.timestamp.slice(5,7) : '';
+      return `<div class="post">
+        <div class="rank">${i+1}</div>
+        <div style="flex:1">
+          <span class="ptype t-${t}">${tl}</span> <span style="font-size:12px;color:var(--muted)">· ${d}</span>
+          <div class="pcap">${esc(shortCap)} <a href="${m.media_permalink||'#'}" target="_blank" rel="noopener">ver ↗</a></div>
+          <div class="pstats">
+            <span>Alcance <b>${fmt(m.media_reach)}</b></span>
+            <span>Reproducc. <b>${fmt(m.media_views)}</b></span>
+            <span>Interacc. <b>${fmt(m.media_engagement)}</b></span>
+            <span>❤ <b>${fmt(m.media_like_count)}</b></span>
+            <span>💬 <b>${fmt(m.media_comments_count)}</b></span>
+          </div>
+        </div>
+      </div>`;
+    };
+
+    const AGES = ['13-17','18-24','25-34','35-44','45-54','55-64','65+'];
+    const ageTot = Object.fromEntries(AGES.map(a=>[a,0]));
+    const genTot = {F:0,M:0,U:0};
+    (genAge||[]).forEach(r=>{
+      const nm = r.audience_gender_age_name||''; const v = Number(r.audience_gender_age_size)||0;
+      const [g,a] = nm.split('.');
+      if(a && a in ageTot) ageTot[a]+=v;
+      if(g && g in genTot) genTot[g]+=v;
+    });
+    const audTotal = genTot.F+genTot.M+genTot.U || 1;
+
+    const topCities = (cities||[]).slice()
+      .sort((a,b)=>(Number(b.audience_city_size)||0)-(Number(a.audience_city_size)||0))
+      .slice(0,6);
+    const cityMax = Math.max(1, ...topCities.map(c=>Number(c.audience_city_size)||0));
+    const cleanCity = s => (s||'').replace(/\?\?/g,'á').split(',')[0];
+
+    content.innerHTML = `
+      <div class="grid kpis">
+        ${kpis.map(k=>`<div class="card kpi"><div class="label">${k.label}</div><div class="val">${k.val}</div>${k.delta}</div>`).join('')}
+      </div>
+      <div class="grid two">
+        <div class="card">
+          <h2>Alcance y reproducciones · ${dr(all[0]?.date)} – ${dr(all[all.length-1]?.date)}</h2>
+          <div class="chart-box"><canvas id="ig-trend"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>Mezcla de interacciones</h2>
+          <div class="mix">
+            ${mix.map(m=>`<div class="mixrow"><span class="nm">${m.nm}</span>
+              <span class="bar"><i style="width:${Math.round(m.v/mixMax*100)}%;background:${m.c}"></i></span>
+              <span class="nv">${fmt(m.v)}</span></div>`).join('')}
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)">
+            Tasa de engagement: <b style="color:var(--ink)">${erC.toFixed(1)}%</b>
+            <span style="margin-left:6px">${deltaHTML(erC,erP)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">Top publicaciones</div>
+      <div class="note">${topNote}</div>
+      <div class="grid posts">
+        ${top.map(postCard).join('') || '<div class="card skel">Sin publicaciones en el período.</div>'}
+      </div>
+
+      <div class="section-title">Audiencia (seguidores)</div>
+      <div class="note">Distribución de tus ${fmt(audTotal)} seguidores por edad, género y ciudad.</div>
+      <div class="grid two" style="margin-top:14px;">
+        <div class="card">
+          <h2>Edad</h2>
+          <div class="chart-box" style="height:230px"><canvas id="ig-ages"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>Género</h2>
+          <div class="mix">
+            <div class="mixrow"><span class="nm">Mujeres</span><span class="bar"><i style="width:${Math.round(genTot.F/audTotal*100)}%;background:#db2777"></i></span><span class="nv">${Math.round(genTot.F/audTotal*100)}%</span></div>
+            <div class="mixrow"><span class="nm">Hombres</span><span class="bar"><i style="width:${Math.round(genTot.M/audTotal*100)}%;background:#2563eb"></i></span><span class="nv">${Math.round(genTot.M/audTotal*100)}%</span></div>
+            <div class="mixrow"><span class="nm">Sin dato</span><span class="bar"><i style="width:${Math.round(genTot.U/audTotal*100)}%;background:#94a3b8"></i></span><span class="nv">${Math.round(genTot.U/audTotal*100)}%</span></div>
+          </div>
+          <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:10px">Top ciudades</div>
+            <div class="mix">
+              ${topCities.map(c=>`<div class="mixrow"><span class="nm" style="width:140px">${esc(cleanCity(c.city))}</span><span class="bar"><i style="width:${Math.round((Number(c.audience_city_size)||0)/cityMax*100)}%;background:#0f9d6b"></i></span><span class="nv">${fmt(c.audience_city_size)}</span></div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const ctx = document.getElementById('ig-trend');
+    new Chart(ctx,{
+      data:{
+        labels:all.map(d=>dr(d.date)),
+        datasets:[
+          {type:'bar', label:'Alcance', data:all.map(d=>Math.max(0,Number(d.reach)||0)),
+            backgroundColor:'rgba(29,78,216,.85)', borderRadius:5, yAxisID:'y', order:2},
+          {type:'line', label:'Reproducciones', data:all.map(d=>Math.max(0,Number(d.views)||0)),
+            borderColor:'#0f9d6b', backgroundColor:'rgba(15,157,107,.12)', borderWidth:2.5,
+            tension:.35, fill:true, pointRadius:0, yAxisID:'y', order:1}
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:12}}}},
+        scales:{
+          y:{beginAtZero:true,grid:{color:'#eef1f6'},ticks:{font:{size:11},color:'#64748b'}},
+          x:{grid:{display:false},ticks:{font:{size:10.5},color:'#94a3b8',maxRotation:0,autoSkip:true,maxTicksLimit:9}}
+        }
+      }
+    });
+
+    const ageCtx = document.getElementById('ig-ages');
+    if(ageCtx){
+      new Chart(ageCtx,{
+        type:'bar',
+        data:{labels:AGES, datasets:[{label:'Seguidores', data:AGES.map(a=>ageTot[a]),
+          backgroundColor:AGES.map(a=>(a==='18-24')?'#10b981':'rgba(29,78,216,.85)'), borderRadius:5}]},
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)+' seguidores ('+(c.raw/audTotal*100).toFixed(0)+'%)'}}},
+          scales:{
+            y:{beginAtZero:true,grid:{color:'#eef1f6'},ticks:{font:{size:11},color:'#64748b'}},
+            x:{grid:{display:false},ticks:{font:{size:11},color:'#64748b'}}
+          }
+        }
+      });
+    }
+
+    igSummary = {followers: prof.followers_count, newFollowers:newC, reach:reachC, reachDeltaHtml:deltaHTML(reachC,reachP), engRate:erC, engRateDeltaHtml:deltaHTML(erC,erP)};
+    renderResumen();
+  }catch(e){
+    content.innerHTML = `<div class="error">No se pudieron cargar los datos de Instagram.<br><span style="font-size:12px">${esc(e.message||String(e))}</span></div>`;
+    igSummary = {error:true};
+    renderResumen();
+  }
+}
+
+/* ================= EMAIL (BREVO) ================= */
+let emailChart;
+async function loadEmail(limit){
+  const content = document.getElementById('email-content');
+  content.innerHTML = '<div class="loading">Cargando campañas de Brevo…</div>';
+  let camps=[], lists=[];
+  try {
+    const c = await callMcp(EM_CAMP_TOOL, { status:'sent', statistics:'globalStats', limit:limit, excludeHtmlContent:true, sort:'desc' });
+    camps = c.campaigns || [];
+    const l = await callMcp(EM_LISTS_TOOL, { limit:50 });
+    lists = l.lists || [];
+  } catch(e){
+    content.innerHTML = `<div class="error">No se pudieron cargar los datos de Brevo.<br><span style="font-size:12px">${esc(e.message||String(e))}</span></div>`;
+    emailSummary = {error:true};
+    renderResumen();
+    return;
+  }
+  const g = c => (c.statistics && c.statistics.globalStats) || {};
+  const sent = camps.filter(c=>c.sentDate);
+  const totDeliv = camps.reduce((a,c)=> a + (g(c).delivered||0), 0);
+  const totViews = camps.reduce((a,c)=> a + (g(c).uniqueViews||0), 0);
+  const avgOpen = totDeliv ? (totViews/totDeliv*100) : 0;
+  const totSubs = lists.reduce((a,l)=> a + (l.uniqueSubscribers||0), 0);
+
+  const recent = sent.slice(0,10).reverse();
+  const labels = recent.map(c=> (c.name||c.subject||'—').slice(0,22));
+  const openRates = recent.map(c=>{ const s=g(c); return s.delivered ? +(s.uniqueViews/s.delivered*100).toFixed(1) : 0; });
+
+  const rowsHtml = sent.slice(0,limit).map(c=>{
+    const s=g(c); const open = s.delivered ? (s.uniqueViews/s.delivered*100) : 0;
+    const click = s.delivered ? (s.uniqueClicks/s.delivered*100) : 0;
+    const d = c.sentDate ? c.sentDate.slice(0,10) : '';
+    return `<tr><td>${d}</td><td>${esc(c.name||c.subject||'—')}</td><td class="num">${fmt(s.delivered||0)}</td><td class="num">${pf(open)}</td><td class="num">${pf(click)}</td><td class="num">${fmt(s.unsubscriptions||0)}</td></tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="grid kpis k4">
+      <div class="card kpi"><div class="label">Campañas enviadas</div><div class="val">${fmt(sent.length)}</div></div>
+      <div class="card kpi"><div class="label">Emails entregados</div><div class="val">${fmt(totDeliv)}</div></div>
+      <div class="card kpi"><div class="label">Tasa de apertura media</div><div class="val" style="color:var(--green)">${pf(avgOpen)}</div></div>
+      <div class="card kpi"><div class="label">Suscriptores en listas</div><div class="val">${fmt(totSubs)}</div></div>
+    </div>
+    <div class="card"><h2>Tasa de apertura · últimas campañas</h2><div class="chart-box"><canvas id="em-chart"></canvas></div></div>
+    <div class="section-title">Campañas enviadas recientes</div>
+    <div class="card">
+      <table><thead><tr><th>Fecha</th><th>Campaña</th><th class="num">Entregados</th><th class="num">Apertura</th><th class="num">Clics</th><th class="num">Bajas</th></tr></thead>
+      <tbody>${rowsHtml || '<tr><td colspan="6" class="skel">Sin campañas enviadas.</td></tr>'}</tbody></table>
+    </div>
+    <div class="section-title">Listas de contactos</div>
+    <div class="card">
+      <table><thead><tr><th>Lista</th><th class="num">Suscriptores</th></tr></thead>
+      <tbody>${lists.filter(l=>l.uniqueSubscribers>0).sort((a,b)=>b.uniqueSubscribers-a.uniqueSubscribers).map(l=>`<tr><td>${esc(l.name)}</td><td class="num">${fmt(l.uniqueSubscribers)}</td></tr>`).join('') || '<tr><td colspan="2" class="skel">Sin listas.</td></tr>'}</tbody></table>
+    </div>`;
+
+  if(emailChart) emailChart.destroy();
+  emailChart = new Chart(document.getElementById('em-chart'), { type:'bar',
+    data:{ labels, datasets:[{label:'% apertura', data:openRates, backgroundColor:'#0d9488', borderRadius:5}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.parsed.y+'%'}}},
+      scales:{x:{grid:{display:false},ticks:{maxRotation:40,minRotation:40,font:{size:10}}},y:{beginAtZero:true,grid:{color:'#f0f0f2'},ticks:{callback:v=>v+'%'}}} } });
+
+  emailSummary = {sentCount:sent.length, avgOpen, totSubs};
+  renderResumen();
+}
+
+/* ================= GOOGLE BUSINESS PROFILE ================= */
+function gbpFallback(){
+  return `
+    <div class="note" style="margin-bottom:14px">
+      Google Business Profile no tiene una API gratuita conectada por Windsor.ai (cuenta trial limitada), así que estos números se actualizan automáticamente todos los lunes con una tarea programada que navega <a href="https://business.google.com/locations" target="_blank" rel="noopener">business.google.com/locations</a> con la cuenta <b>cuenta de la obra social</b>. Todavía no hay datos guardados.
+    </div>
+    <div class="grid gbp-cards">
+      <div class="card">
+        <h2>OSRJA Sede Moreno</h2>
+        <div class="sub" style="margin-top:-8px;margin-bottom:4px">Independencia 2737, Moreno</div>
+        <div class="gbp-stat">
+          <div class="item"><div class="l">Interacciones</div><div class="v">—</div></div>
+          <div class="item"><div class="l">Vistas último mes</div><div class="v">—</div></div>
+          <div class="item"><div class="l">Calificación</div><div class="v">—</div></div>
+          <div class="item"><div class="l">Reseñas totales</div><div class="v">—</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>OSRJA Sede CABA (Sindicato / SURJA)</h2>
+        <div class="sub" style="margin-top:-8px;margin-bottom:4px">Valentín Gómez 3828, CABA</div>
+        <div class="gbp-stat">
+          <div class="item"><div class="l">Interacciones</div><div class="v">—</div></div>
+          <div class="item"><div class="l">Vistas último mes</div><div class="v">—</div></div>
+          <div class="item"><div class="l">Calificación</div><div class="v">—</div></div>
+          <div class="item"><div class="l">Reseñas totales</div><div class="v">—</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card callout">
+      <div class="body"><b>Se actualiza sola.</b> La tarea programada <code>osrja-gbp-dashboard-refresh</code> corre el día 1 de cada mes y guarda los números acá. Si necesitás datos frescos ahora, pedime que la corra manualmente.</div>
+    </div>
+  `;
+}
+async function renderGbp(){
+  const el = document.getElementById('gbp-content');
+  try{
+    const d = await loadJsonWithFallback('./gbp-data.json', 'gbp-inline-data');
+    const locCard = (loc)=>`
+      <div class="card">
+        <h2>${esc(loc.name)}</h2>
+        <div class="sub" style="margin-top:-8px;margin-bottom:4px">${esc(loc.address)}</div>
+        <div class="gbp-stat">
+          <div class="item"><div class="l">Interacciones</div><div class="v" style="color:var(--ink)">${fmt(loc.interactions)}</div></div>
+          <div class="item"><div class="l">Vistas último mes</div><div class="v" style="color:var(--ink)">${fmt(loc.views_month)}</div></div>
+          <div class="item"><div class="l">Calificación</div><div class="v" style="color:var(--ink)">${loc.rating!=null?loc.rating.toFixed(1)+' ★':'—'}</div></div>
+          <div class="item"><div class="l">Reseñas totales</div><div class="v" style="color:var(--ink)">${fmt(loc.reviews_total)}</div></div>
+        </div>
+        ${loc.new_reviews!=null ? `<div class="note" style="margin-top:10px">+${fmt(loc.new_reviews)} opiniones nuevas</div>` : ''}
+      </div>`;
+    el.innerHTML = `
+      <div class="note" style="margin-bottom:14px">Actualizado automáticamente el ${esc(d.updated||'—')} · fuente: ${esc(d.source||'business.google.com')}.</div>
+      <div class="grid gbp-cards">${(d.locations||[]).map(locCard).join('')}</div>
+      <div class="card callout"><div class="body"><b>Se actualiza sola.</b> La tarea programada <code>osrja-gbp-dashboard-refresh</code> corre todos los lunes y refresca estos números.</div></div>
+    `;
+  }catch(e){
+    el.innerHTML = gbpFallback();
+  }
+  const hist = await loadHistory('./gbp-history.jsonl');
+  if(hist.length>=2){
+    el.insertAdjacentHTML('beforeend', trendCardHTML('gbp-trend', `${hist.length} semanas registradas desde que se activó el historial (20 jul 2026). Suma de las 2 sedes.`, monthlyAgg(hist)));
+    renderTrendChart('gbp-trend', hist, [
+      {label:'Vistas mensuales (ambas sedes)', get:p=>sum(p.locations||[], 'views_month'), color:'#1d4ed8'},
+      {label:'Interacciones (ambas sedes)', get:p=>sum(p.locations||[], 'interactions'), color:'#0f9d6b'},
+    ]);
+    el.insertAdjacentHTML('beforeend', trendCardHTML('gbp-trend-rating', 'Calificación (★) por sede — mismo historial semanal.', monthlyAgg(hist)));
+    renderTrendChart('gbp-trend-rating', hist, [
+      {label:'Rating Moreno', get:p=>{ const l=(p.locations||[]).find(l=>/moreno/i.test(l.name)); return l?l.rating:null; }, color:'#1d4ed8'},
+      {label:'Rating CABA', get:p=>{ const l=(p.locations||[]).find(l=>/caba/i.test(l.name)); return l?l.rating:null; }, color:'#0f9d6b'},
+    ]);
+  } else if(hist.length===1){
+    el.insertAdjacentHTML('beforeend', `<div class="card callout" style="margin-top:14px"><div class="body"><b>Historial en construcción.</b> Se registró el primer punto el 20 jul 2026 — la próxima corrida semanal (lunes) va a agregar el segundo y ahí vas a empezar a ver la tendencia acá mismo.</div></div>`);
+  }
+}
+
+/* ================= FACEBOOK (ORGÁNICO) ================= */
+function fbFallback(){
+  return `
+    <div class="note" style="margin-bottom:14px">
+      La página de Facebook de OSRJA no está conectada vía Windsor.ai (el trial gratis solo permite 1 fuente, ya usada por Instagram), así que estos números se traen gratis de Meta Business Suite con una tarea programada semanal. Todavía no hay datos guardados.
+    </div>
+    <div class="grid kpis k4">
+      <div class="card kpi"><div class="label">Visualizaciones</div><div class="val">—</div></div>
+      <div class="card kpi"><div class="label">Seguidores nuevos</div><div class="val">—</div></div>
+      <div class="card kpi"><div class="label">Visitas a la página</div><div class="val">—</div></div>
+      <div class="card kpi"><div class="label">Interacciones</div><div class="val">—</div></div>
+    </div>
+    <div class="card callout"><div class="body"><b>Se actualiza sola.</b> La tarea programada <code>osrja-facebook-dashboard-refresh</code> corre todos los lunes y guarda los números acá.</div></div>
+  `;
+}
+async function renderFacebook(){
+  const el = document.getElementById('facebook-content');
+  try{
+    const d = await loadJsonWithFallback('./facebook-data.json', 'facebook-inline-data');
+    const kpi = (label,val,deltaPct)=>{
+      const dl = (deltaPct==null) ? '' : `<span class="delta ${deltaPct>0.5?'up':(deltaPct<-0.5?'down':'flat')}">${deltaPct>0.5?'▲':(deltaPct<-0.5?'▼':'■')} ${Math.abs(deltaPct).toFixed(1)}%</span>`;
+      return `<div class="card kpi"><div class="label">${label}</div><div class="val">${val}</div>${dl}</div>`;
+    };
+    el.innerHTML = `
+      <div class="note" style="margin-bottom:14px">Actualizado automáticamente el ${esc(d.updated||'—')} · ${esc(d.period||'')} · fuente: Meta Business Suite (sin API paga).</div>
+      <div class="grid kpis k4">
+        ${kpi('Visualizaciones', fmt(d.views), d.views_delta_pct)}
+        ${kpi('Seguidores nuevos', '+'+fmt(d.followers_gained), d.followers_gained_delta_pct)}
+        ${kpi('Visitas a la página', fmt(d.page_visits), d.page_visits_delta_pct)}
+        ${kpi('Interacciones', fmt(d.interactions), d.interactions_delta_pct)}
+      </div>
+      <div class="grid kpis k4">
+        ${kpi('Seguimiento neto', (d.net_follows>=0?'+':'')+fmt(d.net_follows), d.net_follows_delta_pct)}
+        ${kpi('Reproducc. de video (3s)', fmt(d.video_3s_views), d.video_3s_views_delta_pct)}
+        ${kpi('Tiempo de reproducción', esc(d.watch_time||'—'), null)}
+        ${kpi('Conversaciones iniciadas', fmt(d.conversations_started), d.conversations_delta_pct)}
+      </div>
+      <div class="card callout"><div class="body"><b>Meta Ads:</b> ${esc(d.ads_status||'Sin datos de campañas pagas.')}</div></div>
+    `;
+  }catch(e){
+    el.innerHTML = fbFallback();
+  }
+  const hist = await loadHistory('./facebook-history.jsonl');
+  if(hist.length>=2){
+    el.insertAdjacentHTML('beforeend', trendCardHTML('fb-trend', `${hist.length} semanas registradas desde que se activó el historial (20 jul 2026).`, monthlyAgg(hist)));
+    renderTrendChart('fb-trend', hist, [
+      {label:'Visualizaciones', get:p=>p.views, color:'#db2777'},
+      {label:'Visitas a la página', get:p=>p.page_visits, color:'#1d4ed8'},
+      {label:'Interacciones', get:p=>p.interactions, color:'#0f9d6b'},
+    ]);
+  } else if(hist.length===1){
+    el.insertAdjacentHTML('beforeend', `<div class="card callout" style="margin-top:14px"><div class="body"><b>Historial en construcción.</b> Se registró el primer punto el 20 jul 2026 — la próxima corrida semanal (lunes) va a agregar el segundo y ahí vas a empezar a ver la tendencia acá mismo.</div></div>`);
+  }
+}
+
+/* ================= WHATSAPP CHANNEL ================= */
+const WA_LINK = 'https://whatsapp.com/channel/0029VbAbPd91nozCFOaxYM45';
+function waFallback(){
+  return `
+    <div class="note" style="margin-bottom:14px">
+      Meta no expone una API de métricas para Canales de WhatsApp, pero la página pública del canal sí muestra el número de seguidores sin necesitar login — una tarea programada la revisa todos los lunes. Todavía no hay datos guardados.
+    </div>
+    <div class="grid two">
+      <div class="card">
+        <h2>Canal de WhatsApp · OSRJA</h2>
+        <div class="gbp-stat">
+          <div class="item"><div class="l">Seguidores del canal</div><div class="v">—</div></div>
+        </div>
+        <a class="btn" href="${WA_LINK}" target="_blank" rel="noopener" style="display:inline-block;margin-top:14px;text-decoration:none">Abrir canal ↗</a>
+      </div>
+      <div class="card callout">
+        <div class="body"><b>Se actualiza sola.</b> La tarea programada <code>osrja-whatsapp-canal-refresh</code> corre todos los lunes y guarda el número de seguidores acá. Vistas y reacciones por difusión no están disponibles fuera de la app, así que no se muestran.</div>
+      </div>
+    </div>
+  `;
+}
+async function renderWhatsapp(){
+  const el = document.getElementById('whatsapp-content');
+  try{
+    const d = await loadJsonWithFallback('./whatsapp-data.json', 'whatsapp-inline-data');
+    el.innerHTML = `
+      <div class="note" style="margin-bottom:14px">Actualizado automáticamente el ${esc(d.updated||'—')} · fuente: página pública del canal (sin login).</div>
+      <div class="grid two">
+        <div class="card">
+          <h2>${esc(d.name||'Canal de WhatsApp · OSRJA')}</h2>
+          <div class="gbp-stat">
+            <div class="item"><div class="l">Seguidores del canal</div><div class="v" style="color:var(--ink)">${esc(d.followers_label||fmt(d.followers_approx))}</div></div>
+          </div>
+          <a class="btn" href="${WA_LINK}" target="_blank" rel="noopener" style="display:inline-block;margin-top:14px;text-decoration:none">Abrir canal ↗</a>
+        </div>
+        <div class="card callout">
+          <div class="body"><b>Se actualiza sola.</b> La tarea programada <code>osrja-whatsapp-canal-refresh</code> corre todos los lunes. ${esc(d.note||'Vistas y reacciones por difusión no están disponibles fuera de la app.')}</div>
+        </div>
+      </div>
+    `;
+  }catch(e){
+    el.innerHTML = waFallback();
+  }
+  const hist = await loadHistory('./whatsapp-history.jsonl');
+  if(hist.length>=2){
+    el.insertAdjacentHTML('beforeend', trendCardHTML('wa-trend', `${hist.length} semanas registradas desde que se activó el historial (20 jul 2026).`, monthlyAgg(hist)));
+    renderTrendChart('wa-trend', hist, [
+      {label:'Seguidores del canal', get:p=>p.followers_approx, color:'#0f9d6b'},
+    ]);
+  } else if(hist.length===1){
+    el.insertAdjacentHTML('beforeend', `<div class="card callout" style="margin-top:14px"><div class="body"><b>Historial en construcción.</b> Se registró el primer punto el 20 jul 2026 — la próxima corrida semanal (lunes) va a agregar el segundo y ahí vas a empezar a ver la tendencia acá mismo.</div></div>`);
+  }
+}
+
+/* ================= LINKEDIN ================= */
+const LI_LINK = 'https://www.linkedin.com/company/obra-social-relojeros-joyeros-y-afines/';
+function liFallback(){
+  return `
+    <div class="note" style="margin-bottom:14px">
+      LinkedIn no tiene un conector orgánico gratuito vía Windsor.ai (el trial solo permite 1 fuente, ya usada por Instagram). Una tarea programada revisa el conteo público de seguidores todos los lunes; las métricas de administradora (vistas, impresiones, engagement) requieren que la sesión de cuenta de la obra social esté logueada en el navegador conectado. Todavía no hay datos guardados.
+    </div>
+    <div class="grid two">
+      <div class="card">
+        <h2>Página de LinkedIn · OSRJA</h2>
+        <div class="gbp-stat">
+          <div class="item"><div class="l">Seguidores</div><div class="v">—</div></div>
+          <div class="item"><div class="l">Nuevos (semana)</div><div class="v">—</div></div>
+        </div>
+        <a class="btn" href="${LI_LINK}" target="_blank" rel="noopener" style="display:inline-block;margin-top:14px;text-decoration:none">Abrir página ↗</a>
+      </div>
+      <div class="card callout">
+        <div class="body"><b>Se actualiza sola.</b> La tarea programada <code>osrja-linkedin-dashboard-refresh</code> corre todos los lunes y guarda estos números acá.</div>
+      </div>
+    </div>
+  `;
+}
+async function renderLinkedin(){
+  const el = document.getElementById('linkedin-content');
+  try{
+    const d = await loadJsonWithFallback('./linkedin-data.json', 'linkedin-inline-data');
+    const kpi = (label,val)=>`<div class="card kpi"><div class="label">${label}</div><div class="val">${val}</div></div>`;
+    const analyticsBlock = d.analytics_available ? `
+      <div class="grid kpis k4" style="margin-top:14px">
+        ${kpi('Visitas a la página', fmt(d.page_views))}
+        ${kpi('Visitantes únicos', fmt(d.unique_visitors))}
+        ${kpi('Impresiones', fmt(d.impressions))}
+        ${kpi('Tasa de engagement', d.engagement_rate_pct!=null?pf(d.engagement_rate_pct):'–%')}
+      </div>
+      <div class="grid kpis k4">
+        ${kpi('Interacciones', fmt(d.engagements))}
+        ${kpi('Reacciones', fmt(d.reactions))}
+        ${kpi('Comentarios', fmt(d.comments))}
+        ${kpi('Reposts', fmt(d.reposts))}
+      </div>
+      ${d.top_post ? `<div class="card callout"><div class="body"><b>Post con más impresiones:</b> ${esc(d.top_post)}</div></div>` : ''}
+    ` : `
+      <div class="card callout">
+        <div class="body"><b>Sin analíticas completas todavía.</b> ${esc(d.note||'La sesión de cuenta de la obra social no está logueada en LinkedIn en el navegador conectado — iniciando sesión manualmente una vez, las próximas corridas semanales van a traer vistas, impresiones y engagement.')}</div>
+      </div>
+    `;
+    el.innerHTML = `
+      <div class="note" style="margin-bottom:14px">Actualizado automáticamente el ${esc(d.updated||'—')}${d.period?(' · '+esc(d.period)):''} · fuente: ${esc(d.source_followers||'linkedin.com')}.</div>
+      <div class="grid kpis k3">
+        ${kpi('Seguidores', fmt(d.followers_total))}
+        ${kpi('Nuevos (semana)', d.followers_gained_week!=null ? '+'+fmt(d.followers_gained_week) : '—')}
+        <div class="card kpi"><div class="label">Página</div><div class="val" style="font-size:14px"><a href="${LI_LINK}" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none">Abrir en LinkedIn ↗</a></div></div>
+      </div>
+      ${analyticsBlock}
+    `;
+  }catch(e){
+    el.innerHTML = liFallback();
+  }
+  const hist = await loadHistory('./linkedin-history.jsonl');
+  if(hist.length>=2){
+    el.insertAdjacentHTML('beforeend', trendCardHTML('li-trend', `${hist.length} semanas registradas desde que se activó el historial (20 jul 2026).`, monthlyAgg(hist)));
+    renderTrendChart('li-trend', hist, [
+      {label:'Seguidores', get:p=>p.followers_total, color:'#1d4ed8'},
+    ]);
+    const withAnalytics = hist.filter(p=>p.analytics_available && p.impressions!=null);
+    if(withAnalytics.length>=2){
+      el.insertAdjacentHTML('beforeend', trendCardHTML('li-trend-eng', 'Impresiones y engagement, solo semanas con la sesión de administradora logueada.', monthlyAgg(withAnalytics)));
+      renderTrendChart('li-trend-eng', withAnalytics, [
+        {label:'Impresiones', get:p=>p.impressions, color:'#7c3aed'},
+        {label:'Interacciones', get:p=>p.engagements, color:'#db2777'},
+      ]);
+    }
+  } else if(hist.length===1){
+    el.insertAdjacentHTML('beforeend', `<div class="card callout" style="margin-top:14px"><div class="body"><b>Historial en construcción.</b> Se registró el primer punto el 20 jul 2026 — la próxima corrida semanal (lunes) va a agregar el segundo y ahí vas a empezar a ver la tendencia acá mismo.</div></div>`);
+  }
+}
+
+/* ================= RESUMEN ================= */
+function renderResumen(){
+  if(igSummary===null || emailSummary===null || channelsSummary===null) return; // esperar a que todo termine
+  const el = document.getElementById('resumen-content');
+  const {fb, gbp, wa, li} = channelsSummary;
+  const igBlock = igSummary.error
+    ? `<div class="card kpi"><div class="label">Instagram</div><div class="val" style="font-size:15px;color:var(--muted)">Error al cargar</div></div>`
+    : `<div class="card kpi"><div class="label">Instagram · Seguidores</div><div class="val">${fmt(igSummary.followers)}</div><span class="delta flat">${(igSummary.newFollowers>=0?'+':'')+fmt(igSummary.newFollowers)} en el período</span></div>
+       <div class="card kpi"><div class="label">Instagram · Alcance</div><div class="val">${fmt(igSummary.reach)}</div>${igSummary.reachDeltaHtml}</div>
+       <div class="card kpi"><div class="label">Instagram · Engagement</div><div class="val">${igSummary.engRate.toFixed(1)}%</div>${igSummary.engRateDeltaHtml}</div>`;
+  const emailBlock = emailSummary.error
+    ? `<div class="card kpi"><div class="label">Email</div><div class="val" style="font-size:15px;color:var(--muted)">Error al cargar</div></div>`
+    : `<div class="card kpi"><div class="label">Email · Campañas enviadas</div><div class="val">${fmt(emailSummary.sentCount)}</div><span class="delta flat">recientes</span></div>
+       <div class="card kpi"><div class="label">Email · Apertura media</div><div class="val" style="color:var(--green)">${pf(emailSummary.avgOpen)}</div></div>
+       <div class="card kpi"><div class="label">Email · Suscriptores</div><div class="val">${fmt(emailSummary.totSubs)}</div></div>`;
+
+  const fbBlock = fb
+    ? `<div class="card kpi"><div class="label">Facebook · Visualizaciones</div><div class="val">${fmt(fb.views)}</div><span class="delta ${fb.views_delta_pct>0.5?'up':(fb.views_delta_pct<-0.5?'down':'flat')}">${fb.views_delta_pct>0.5?'▲':(fb.views_delta_pct<-0.5?'▼':'■')} ${Math.abs(fb.views_delta_pct||0).toFixed(1)}%</span></div>
+       <div class="card kpi"><div class="label">Facebook · Interacciones</div><div class="val">${fmt(fb.interactions)}</div><span class="delta flat">últimos 28 días</span></div>`
+    : `<div class="card kpi"><div class="label">Facebook</div><div class="val" style="font-size:14px;color:var(--muted)">Sin datos todavía</div></div>`;
+
+  const gbpMoreno = gbp && (gbp.locations||[]).find(l=>/moreno/i.test(l.name));
+  const gbpCaba = gbp && (gbp.locations||[]).find(l=>/caba/i.test(l.name));
+  const gbpBlock = (gbpMoreno||gbpCaba)
+    ? `<div class="card kpi"><div class="label">GBP · Rating Moreno</div><div class="val">${gbpMoreno?gbpMoreno.rating.toFixed(1)+' ★':'—'}</div><span class="delta flat">${fmt(gbpMoreno&&gbpMoreno.reviews_total)} reseñas</span></div>
+       <div class="card kpi"><div class="label">GBP · Rating CABA</div><div class="val">${gbpCaba?gbpCaba.rating.toFixed(1)+' ★':'—'}</div><span class="delta flat">${fmt(gbpCaba&&gbpCaba.reviews_total)} reseñas</span></div>`
+    : `<div class="card kpi"><div class="label">Google Business</div><div class="val" style="font-size:14px;color:var(--muted)">Sin datos todavía</div></div>`;
+
+  const waBlock = wa
+    ? `<div class="card kpi"><div class="label">WhatsApp · Seguidores del canal</div><div class="val">${esc(wa.followers_label||fmt(wa.followers_approx))}</div><a class="delta flat" href="${WA_LINK}" target="_blank" rel="noopener" style="text-decoration:none">abrir canal ↗</a></div>`
+    : `<div class="card kpi"><div class="label">WhatsApp</div><div class="val" style="font-size:14px;color:var(--muted)">Sin datos todavía</div></div>`;
+
+  const liBlock = li
+    ? `<div class="card kpi"><div class="label">LinkedIn · Seguidores</div><div class="val">${fmt(li.followers_total)}</div>${li.analytics_available?`<span class="delta flat">${fmt(li.impressions)} impresiones</span>`:`<span class="delta flat">sin analíticas (falta login)</span>`}</div>`
+    : `<div class="card kpi"><div class="label">LinkedIn</div><div class="val" style="font-size:14px;color:var(--muted)">Sin datos todavía</div></div>`;
+
+  el.innerHTML = `
+    <div class="section-title" style="margin-top:0">Seguidores por canal</div>
+    <div class="card"><div class="chart-box" style="height:220px"><canvas id="resumen-followers"></canvas></div>
+      <div class="note" style="margin-top:10px">Solo se comparan canales con un total de seguidores medible (Facebook y Google Business no tienen ese dato disponible, así que no entran acá — sus métricas propias están más abajo).</div>
+    </div>
+
+    <div class="section-title">Instagram · @osrjaoficial</div>
+    <div class="grid kpis k3">${igBlock}</div>
+    <div class="section-title">Email · Brevo</div>
+    <div class="grid kpis k3">${emailBlock}</div>
+    <div class="section-title">Facebook <span class="badge-manual" style="margin-left:8px">semanal</span></div>
+    <div class="grid kpis k4">${fbBlock}</div>
+    <div class="section-title">Google Business Profile <span class="badge-manual" style="margin-left:8px">semanal</span></div>
+    <div class="grid kpis k4">${gbpBlock}</div>
+    <div class="section-title">WhatsApp <span class="badge-manual" style="margin-left:8px">semanal</span></div>
+    <div class="grid kpis k4">${waBlock}</div>
+    <div class="section-title">LinkedIn <span class="badge-manual" style="margin-left:8px">semanal</span></div>
+    <div class="grid kpis k4">${liBlock}</div>
+  `;
+
+  const labels = [], data = [], colors = [];
+  if(!igSummary.error && igSummary.followers!=null){ labels.push('Instagram'); data.push(Number(igSummary.followers)||0); colors.push('#db2777'); }
+  if(wa && wa.followers_approx!=null){ labels.push('WhatsApp'); data.push(Number(wa.followers_approx)||0); colors.push('#0f9d6b'); }
+  if(li && li.followers_total!=null){ labels.push('LinkedIn'); data.push(Number(li.followers_total)||0); colors.push('#1d4ed8'); }
+  if(resumenFollowersChart) resumenFollowersChart.destroy();
+  if(data.length){
+    resumenFollowersChart = new Chart(document.getElementById('resumen-followers'), {
+      type:'bar',
+      data:{ labels, datasets:[{label:'Seguidores', data, backgroundColor:colors, borderRadius:6}] },
+      options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)+' seguidores'}}},
+        scales:{x:{beginAtZero:true,grid:{color:'#eef1f6'},ticks:{font:{size:11},color:'#64748b'}},
+          y:{grid:{display:false},ticks:{font:{size:12,weight:'600'},color:'#334155'}}}
+      }
+    });
+  }
+}
+
+/* ================= MEJORAS (recomendaciones) ================= */
+async function renderMejoras(){
+  const el = document.getElementById('mejoras-content');
+  el.innerHTML = '<div class="loading">Analizando datos reales de cada canal…</div>';
+  const [fb, gbp, wa, li] = await Promise.all([
+    loadJsonWithFallback('./facebook-data.json','facebook-inline-data').catch(()=>null),
+    loadJsonWithFallback('./gbp-data.json','gbp-inline-data').catch(()=>null),
+    loadJsonWithFallback('./whatsapp-data.json','whatsapp-inline-data').catch(()=>null),
+    loadJsonWithFallback('./linkedin-data.json','linkedin-inline-data').catch(()=>null),
+  ]);
+  const moreno = gbp && (gbp.locations||[]).find(l=>/moreno/i.test(l.name));
+  const caba = gbp && (gbp.locations||[]).find(l=>/caba/i.test(l.name));
+
+  const card = (title, tag, tagColor, bodyHtml) => `
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <h2 style="margin:0">${title}</h2>
+        <span class="pill" style="background:${tagColor}22;color:${tagColor}">${tag}</span>
+      </div>
+      <div style="font-size:13.5px;line-height:1.6;color:#334155">${bodyHtml}</div>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="note" style="margin-bottom:16px">Recomendaciones basadas en los datos reales más recientes de cada canal (no son genéricas). Se actualizan cada vez que abrís esta pestaña, así que a medida que las tareas semanales traigan números nuevos, el análisis va a reflejarlos.</div>
+
+    ${card('Instagram · @osrjaoficial', 'Prioridad media', '#1d4ed8', `
+      Bloqueado ahora mismo: <b>Windsor.ai</b> (la fuente de datos reales de Instagram) devuelve un error de plan Free porque quedaron 2 fuentes conectadas (<code>instagram</code> + <code>instagram_public</code>) cuando el plan solo permite 1 — hay que desconectar <code>instagram_public</code> en <a href="https://onboard.windsor.ai/app/pricing" target="_blank" rel="noopener">onboard.windsor.ai</a> (o resolverlo vía la integración de Coupler.io que se está reconectando) para que vuelva a traer datos en vivo.<br><br>
+      Una vez destrabado: la audiencia histórica es mayormente mujeres 35–54 años con baja frecuencia de publicación como cuello de botella — subir la cadencia (2-3 posts/semana) y priorizar Reels (mayor alcance orgánico que imagen estática) debería mover más la aguja que cualquier otro ajuste en este canal.
+    `)}
+
+    ${card('Facebook (orgánico)', fb ? 'Datos al '+esc(fb.updated) : 'Sin datos', '#0f9d6b', fb ? `
+      Vistas ${fmt(fb.views)} (${fb.views_delta_pct>0?'+':''}${fb.views_delta_pct}%) y visitas a la página ${fmt(fb.page_visits)} vienen creciendo, pero <b>las interacciones reales son muy pocas (${fmt(fb.interactions)})</b> — el crecimiento en alcance no se está traduciendo en gente que comenta, comparte o reacciona.<br><br>
+      <b>Acción concreta:</b> sumar 1-2 posts/semana con formato de pregunta o encuesta (que piden respuesta activa, no solo scroll) y probar contenido en video corto — los ${fmt(fb.video_3s_views)} views de 3s ya vienen con +${fb.video_3s_views_delta_pct}%, es la métrica que mejor está respondiendo.<br><br>
+      Hay una cuenta de Meta Ads creada (cuenta publicitaria) <b>sin ninguna campaña activa</b> — con un presupuesto mínimo (ej. boostear el mejor post orgánico del mes) se podría extender el alcance sin armar campañas complejas desde cero.
+    ` : 'Todavía no hay datos guardados — corré la tarea semanal para tener números reales acá.')}
+
+    ${card('Google Business Profile', gbp ? 'Datos al '+esc(gbp.updated) : 'Sin datos', '#db2777', (moreno||caba) ? `
+      <b>Sede Moreno: ${moreno?moreno.rating.toFixed(1):'–'}★ sobre ${moreno?fmt(moreno.reviews_total):'–'} reseñas</b> — la calificación es más baja que la de CABA (${caba?caba.rating.toFixed(1):'–'}★, solo ${caba?fmt(caba.reviews_total):'–'} reseñas) probablemente porque arrastra reseñas negativas antiguas sobre una base mucho más grande.<br><br>
+      <b>Acción concreta y gratis:</b> (1) responder públicamente las reseñas negativas de Moreno — mejora percepción y ayuda al posicionamiento local aunque no cambie la nota; (2) pedirles activamente a afiliados recién atendidos que dejen reseña, para diluir las antiguas con reseñas nuevas y mejores (Moreno ya suma ${moreno?fmt(moreno.new_reviews):'–'} nuevas este período, hay que sostener ese ritmo); (3) usar la función gratuita de "Publicaciones" de Google Business para anunciar novedades — suma a las ${moreno?fmt(moreno.views_month):'–'} vistas mensuales de Moreno sin costo.
+    ` : 'Todavía no hay datos guardados — corré la tarea semanal para tener números reales acá.')}
+
+    ${card('WhatsApp (canal de difusión)', wa ? 'Datos al '+esc(wa.updated) : 'Sin datos', '#7c3aed', wa ? `
+      El canal tiene ${esc(wa.followers_label||fmt(wa.followers_approx))} seguidores, pero Meta no expone ninguna métrica de vistas o reacciones por difusión fuera de la app — hoy es imposible saber si la gente realmente lee lo que se manda.<br><br>
+      <b>Acción concreta:</b> agregar enlaces con UTM (ej. a la web o a un post de Instagram) en los mensajes del canal — los clics en ese link sí se pueden medir (en Google Analytics o en el acortador que se use) y funcionan como métrica indirecta de cuánta gente interactúa con la difusión.
+    ` : 'Todavía no hay datos guardados — corré la tarea semanal para tener números reales acá.')}
+
+    ${card('LinkedIn', li ? 'Datos al '+esc(li.updated) : 'Sin datos', '#1d4ed8', (li && !li.analytics_available) ? `
+      <b>Esta es la mejora más fácil y de mayor impacto de todo el panel.</b> La página tiene ${fmt(li.followers_total)} seguidores, pero <b>no hay ningún dato de vistas, impresiones o engagement</b> porque la sesión de cuenta de la obra social todavía no está logueada en LinkedIn en el navegador conectado.<br><br>
+      <b>Acción concreta:</b> iniciar sesión una sola vez manualmente (nadie más puede hacerlo por vos) — apenas quede logueada, la corrida semanal del próximo lunes va a empezar a traer vistas de página, impresiones, reacciones y el post con más alcance, datos que hoy son 100% invisibles.
+    ` : (li ? `Analíticas disponibles — seguir monitoreando la tendencia en la pestaña LinkedIn.` : 'Todavía no hay datos guardados.'))}
+
+    ${card('Email · Brevo', 'En vivo', '#0f9d6b', `
+      Este canal ya trae datos reales en vivo cada vez que abrís la pestaña <b>Email (Brevo)</b> (no depende de una tarea semanal). Revisá ahí la tasa de apertura media y compará campaña a campaña — si ves aperturas cayendo, suele ser señal de que la lista necesita limpieza (suscriptores inactivos) o que el asunto del mail no está funcionando.
+    `)}
+
+    <div class="card callout" style="border-left-color:#0f9d6b">
+      <div class="body"><b>Sobre el "mes a mes":</b> a partir de hoy (20 jul 2026), Facebook, Google Business, WhatsApp y LinkedIn guardan un punto de historial por semana (se ve como gráfico de tendencia en cada pestaña apenas haya 2+ semanas registradas). Instagram y Email ya tienen historial real vía API una vez Windsor/Coupler esté destrabado. Para una comparación mes a mes con series completas, lo más honesto es volver a mirar este panel dentro de 4-5 semanas — no hay atajo para tener datos de meses que nunca se registraron.</div>
+    </div>
+  `;
+}
+
+/* ================= init ================= */
+document.getElementById('ig-reload').addEventListener('click', ()=>loadInstagram(document.getElementById('ig-range').value));
+document.getElementById('ig-range').addEventListener('change', e=>loadInstagram(e.target.value));
+document.getElementById('em-reload').addEventListener('click', ()=>loadEmail(Number(document.getElementById('em-limit').value)));
+document.getElementById('em-limit').addEventListener('change', e=>loadEmail(Number(e.target.value)));
+
+renderGbp();
+renderWhatsapp();
+renderFacebook();
+renderLinkedin();
+renderMejoras();
+loadChannelsSummary();
+stamp();
+loadInstagram(document.getElementById('ig-range').value);
+loadEmail(Number(document.getElementById('em-limit').value));
+</script>
+</body>
+</html>

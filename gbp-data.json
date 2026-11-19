@@ -1,0 +1,25 @@
+{
+  "updated": "2026-08-01",
+  "source": "business.google.com/locations (cuenta de la obra social, reverificada por la usuaria el 2026-08-01)",
+  "note": "El panel de interacciones/vistas cambió de vista (ahora muestra un período acumulado mar-ago 2026 en vez de un mes fijo) — interactions_6m y views_last_month no son directamente comparables con los interactions/views_month de la corrida anterior (20/7).",
+  "locations": [
+    {
+      "name": "OSRJA Sede Moreno",
+      "address": "Independencia 2737, Moreno",
+      "interactions_6m": 1528,
+      "views_last_month": 2714,
+      "rating": 3.7,
+      "reviews_total": 558,
+      "new_reviews": 22
+    },
+    {
+      "name": "OSRJA Sede CABA (Sindicato / SURJA)",
+      "address": "Valentín Gómez 3828, CABA",
+      "interactions_6m": 627,
+      "views_last_month": 1165,
+      "rating": 3.9,
+      "reviews_total": 71,
+      "new_reviews": null
+    }
+  ]
+}
